@@ -1,10 +1,10 @@
 """
-This script detects connected displays using `xrandr` 
+This script detects connected displays using `xrandr`
 and creates Tkinter windows on each display.
 
-The main window is placed on the primary display, 
-and additional windows are created for each secondary display. 
-The windows are positioned near the center of their respective 
+The main window is placed on the primary display,
+and additional windows are created for each secondary display.
+The windows are positioned near the center of their respective
 displays and display the name of the display.
 """
 
@@ -13,8 +13,6 @@ import sys
 from subprocess import run
 from dataclasses import dataclass
 from tkinter import Tk, Toplevel, Label
-
-XrandrDisplay = tuple[str, str, str, str]
 
 
 @dataclass
@@ -34,10 +32,29 @@ class WindowGeometry:
 
     def __str__(self) -> str:
         """
-        Returns a string representation 
+        Returns a string representation
         suitable for Tkinter's geometry method.
         """
         return f"{self.width}x{self.height}+{self.x}+{self.y}"
+
+
+@dataclass
+class XrandrDisplay:
+    """Represents a display detected by `xrandr`.
+
+    Attributes:
+        name (str): The name of the display.
+        is_primary (bool): 
+            True if the display is the primary display.
+        resolution (str): 
+            The resolution of the display in the format "widthxheight".
+        position (str): 
+            The position of the display in the format "x+y".
+    """
+    name: str
+    is_primary: bool
+    resolution: str
+    position: str
 
 
 def create_window(geometry: WindowGeometry,
@@ -45,18 +62,18 @@ def create_window(geometry: WindowGeometry,
     """Creates a Toplevel window.
 
     Args:
-        geometry (WindowGeometry): 
+        geometry (WindowGeometry):
             Defining the window's size and position.
-        title (str, optional): 
+        title (str, optional):
             The title of the window. Defaults to "".
-        message (str, optional): 
+        message (str, optional):
             The message to be displayed in the window. Defaults to "".
     """
     window = Toplevel()
     window.title(title)
     window.geometry(str(geometry))
-    font_size = int(geometry.width/geometry.height * 20)
-    label = Label(window, text=message, font=("Arial", font_size))
+    font = ("Arial", int(geometry.width/geometry.height * 20))
+    label = Label(window, text=message, font=font)
     label.place(relx=0.5, rely=0.5, anchor="center")
 
 
@@ -67,25 +84,28 @@ def main():
     root = Tk()
     xrandr_cmd = run(["xrandr"], check=True, capture_output=True, text=True)
     regex = r"(.+)\s(?:connected)(.*)\s(\d+x\d+)\+(\d+\+\d+)\s"
-    xrandr_output: list[XrandrDisplay] = re.findall(regex, xrandr_cmd.stdout)
+    displays: list[XrandrDisplay] = [
+        XrandrDisplay(match[0], bool(match[1]), match[2], match[3])
+        for match in re.findall(regex, xrandr_cmd.stdout)
+    ]
 
-    if not xrandr_output:
+    if not displays:
         sys.exit("No connected displays found")
 
-    for i in xrandr_output:
-        display_name = i[0]
-        is_primary = bool(i[1])
-        w, h = map(int, i[2].split("x"))
-        x, y = map(int, i[3].split("+"))
+    for display in displays:
+        w, h = map(int, display.resolution.split("x"))
+        x, y = map(int, display.position.split("+"))
         geometry = WindowGeometry(w//2, h//2, x+w//4, y+h//4)
+        info = f'{display.resolution}\n{display.position}'
 
-        if is_primary:
-            root.title(f"{display_name} [Main Window]")
+        if display.is_primary:
+            root.title(f"{display.name} [Main Window]")
             root.geometry(str(geometry))
-            Label(root, font=("Arial", int(geometry.width/geometry.height * 20)),
-                  text=display_name).place(relx=0.5, rely=0.5, anchor="center")
+            font = ("Arial", int(w/h * 20))
+            label = Label(root, font=font, text=f'[{display.name}]\n{info}')
+            label.place(relx=0.5, rely=0.5, anchor="center")
         else:
-            create_window(geometry, display_name, display_name)
+            create_window(geometry, display.name, f'{display.name}\n{info}')
     root.mainloop()
 
 
